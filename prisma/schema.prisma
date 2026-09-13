@@ -16,15 +16,25 @@ enum ServiceType {
   EVALUACION
 }
 
+// Cómo cobra un equipo: una sesión del paquete, un precio fijo en créditos,
+// o créditos por cada minuto encendido.
+enum BillingMode {
+  SESIONES
+  CREDITOS
+  MINUTOS
+}
+
 enum AttendanceResult {
   OK
   SIN_PAQUETE
   PAQUETE_VENCIDO
+  SIN_CREDITOS
   TARJETA_DESCONOCIDA
   TARJETA_SIN_PACIENTE
   TARJETA_INACTIVA
   DUPLICADO
   PACIENTE_DESCONOCIDO
+  EQUIPO_INACTIVO
 }
 
 model Patient {
@@ -38,6 +48,8 @@ model Patient {
   cards      Card[]
   packages   PatientPackage[]
   attendance Attendance[]
+  usages     Usage[]
+  recharges  Recharge[]
 }
 
 model Card {
@@ -57,7 +69,8 @@ model Card {
 model Package {
   id           String      @id @default(uuid())
   nombre       String
-  sesiones     Int
+  sesiones     Int         @default(0)
+  creditos     Decimal     @default(0) @db.Decimal(10, 2)
   vigenciaDias Int
   precio       Decimal     @db.Decimal(10, 2)
   serviceType  ServiceType
@@ -73,12 +86,73 @@ model PatientPackage {
   packageId         String
   package           Package  @relation(fields: [packageId], references: [id])
   sesionesRestantes Int
+  creditosRestantes Decimal  @default(0) @db.Decimal(10, 2)
   compradoEn        DateTime @default(now())
   venceEn           DateTime
 
   attendance Attendance[]
+  usages     Usage[]
+  recharges  Recharge[]
 
   @@index([patientId, venceEn])
+}
+
+// Sillón de masaje, caminadora, equipo de recuperación… Define la tarifa y cuánto
+// tiempo debe cerrar el relé el terminal que lo controla.
+model Equipment {
+  id               String      @id @default(uuid())
+  nombre           String
+  serviceType      ServiceType
+  billingMode      BillingMode
+  // Créditos por uso (CREDITOS) o por minuto (MINUTOS). Ignorado en SESIONES.
+  costo            Decimal     @default(0) @db.Decimal(10, 2)
+  // Segundos que se activa el relé; en MINUTOS es además el tope de un uso.
+  duracionSegundos Int         @default(0)
+  activo           Boolean     @default(true)
+  createdAt        DateTime    @default(now())
+
+  terminals Terminal[]
+  usages    Usage[]
+}
+
+// Un uso abierto de un equipo por minutos: se cobra al cerrarlo.
+model Usage {
+  id               String          @id @default(uuid())
+  attendanceId     String          @unique
+  attendance       Attendance      @relation(fields: [attendanceId], references: [id])
+  patientId        String
+  patient          Patient         @relation(fields: [patientId], references: [id])
+  terminalId       String
+  terminal         Terminal        @relation(fields: [terminalId], references: [id])
+  equipmentId      String
+  equipment        Equipment       @relation(fields: [equipmentId], references: [id])
+  patientPackageId String?
+  patientPackage   PatientPackage? @relation(fields: [patientPackageId], references: [id])
+  inicioEn         DateTime        @default(now())
+  finEn            DateTime?
+  segundos         Int?
+  creditosCobrados Decimal         @default(0) @db.Decimal(10, 2)
+  // true cuando el terminal nunca reportó el fin y se cerró con el tope del equipo.
+  cerradoPorTope   Boolean         @default(false)
+
+  @@index([patientId, inicioEn])
+  @@index([terminalId, finEn])
+}
+
+// Recarga hecha en caja: crea el paquete/monedero y deja la huella de quién cobró.
+model Recharge {
+  id               String         @id @default(uuid())
+  patientId        String
+  patient          Patient        @relation(fields: [patientId], references: [id])
+  patientPackageId String
+  patientPackage   PatientPackage @relation(fields: [patientPackageId], references: [id])
+  sesiones         Int
+  creditos         Decimal        @db.Decimal(10, 2)
+  monto            Decimal        @db.Decimal(10, 2)
+  registradoPor    String?
+  createdAt        DateTime       @default(now())
+
+  @@index([patientId, createdAt])
 }
 
 // Un ESP32 físico. Se guarda solo el hash de la apiKey; el texto plano vive en el firmware.
@@ -90,8 +164,13 @@ model Terminal {
   activo      Boolean     @default(true)
   ultimoVisto DateTime?
   createdAt   DateTime    @default(now())
+  // Equipo que activa este terminal. Sin equipo se comporta como control de acceso
+  // por sesiones sobre su serviceType.
+  equipmentId String?
+  equipment   Equipment?  @relation(fields: [equipmentId], references: [id])
 
   attendance Attendance[]
+  usages     Usage[]
 }
 
 // Cada lectura queda registrada, sea aceptada o no. Es la fuente de reportería.
@@ -110,6 +189,8 @@ model Attendance {
   manual           Boolean          @default(false)
   registradoPor    String? // usuario de recepción que hizo el registro manual
   createdAt        DateTime         @default(now())
+
+  usage Usage?
 
   @@index([terminalId, createdAt])
   @@index([patientId, createdAt])

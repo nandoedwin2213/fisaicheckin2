@@ -5,14 +5,16 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { CheckinModule } from './checkin/checkin.module';
 import { HealthController } from './health.controller';
 import { PrismaModule } from './prisma/prisma.module';
+import { RechargeModule } from './recharge/recharge.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     // Un terminal legítimo lee como mucho una tarjeta cada pocos segundos.
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 30 }]),
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: Number(process.env.RATE_LIMIT ?? 30) }]),
     PrismaModule,
     CheckinModule,
+    RechargeModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

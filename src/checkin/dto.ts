@@ -1,4 +1,5 @@
-import { IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsInt, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min } from 'class-validator';
 
 export class CheckinDto {
   @IsString()
@@ -19,4 +20,15 @@ export class CheckinManualDto {
   @IsString()
   @MaxLength(120)
   registradoPor?: string;
+}
+
+export class FinUsoDto {
+  @IsUUID()
+  usoId!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(86_400)
+  segundos!: number;
 }
