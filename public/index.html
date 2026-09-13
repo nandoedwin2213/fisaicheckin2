@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FISAI — Caja</title>
+    <style>
+      :root { color-scheme: light dark; --borde: #d0d5dd; --acento: #0d6efd; }
+      * { box-sizing: border-box; }
+      body { margin: 0; font: 15px/1.45 system-ui, sans-serif; background: #f5f6f8; color: #1a1d21; }
+      header { background: #0f172a; color: #fff; padding: 14px 20px; display: flex; gap: 12px; align-items: center; }
+      header h1 { font-size: 17px; margin: 0; flex: 1; }
+      main { max-width: 880px; margin: 20px auto; padding: 0 16px; display: grid; gap: 16px; }
+      section { background: #fff; border: 1px solid var(--borde); border-radius: 10px; padding: 16px; }
+      h2 { font-size: 15px; margin: 0 0 12px; }
+      label { display: block; font-size: 13px; color: #475467; margin-bottom: 4px; }
+      input, select, button { font: inherit; padding: 8px 10px; border-radius: 7px; border: 1px solid var(--borde); background: #fff; }
+      input, select { width: 100%; }
+      button { background: var(--acento); color: #fff; border-color: var(--acento); cursor: pointer; }
+      button.sec { background: #fff; color: #1a1d21; border-color: var(--borde); }
+      button:disabled { opacity: .5; cursor: default; }
+      .fila { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+      .fila > div { flex: 1 1 180px; }
+      table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
+      th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eceff3; }
+      .vencido { color: #b42318; }
+      #aviso { padding: 10px 12px; border-radius: 8px; display: none; }
+      #aviso.ok { display: block; background: #ecfdf3; color: #027a48; }
+      #aviso.err { display: block; background: #fef3f2; color: #b42318; }
+      .oculto { display: none; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>FISAI — Caja</h1>
+      <input id="staffKey" type="password" placeholder="X-Staff-Key" style="width: 230px" />
+      <button id="entrar">Entrar</button>
+    </header>
+
+    <main>
+      <div id="aviso"></div>
+
+      <div id="panel" class="oculto">
+        <section>
+          <h2>Paciente</h2>
+          <div class="fila">
+            <div>
+              <label for="cedula">Cédula</label>
+              <input id="cedula" inputmode="numeric" maxlength="10" placeholder="1712345678" />
+            </div>
+            <div style="flex: 0 0 auto"><button id="buscar">Buscar saldo</button></div>
+          </div>
+          <div id="saldo"></div>
+        </section>
+
+        <section>
+          <h2>Recargar</h2>
+          <div class="fila">
+            <div>
+              <label for="paquete">Paquete</label>
+              <select id="paquete"></select>
+            </div>
+            <div>
+              <label for="registradoPor">Registrado por</label>
+              <input id="registradoPor" placeholder="nombre de quien cobra" />
+            </div>
+            <div style="flex: 0 0 auto"><button id="recargar">Cobrar</button></div>
+          </div>
+        </section>
+
+        <section>
+          <h2>Check-in manual</h2>
+          <div class="fila">
+            <div>
+              <label for="terminal">Terminal / equipo</label>
+              <select id="terminal"></select>
+            </div>
+            <div style="flex: 0 0 auto"><button id="checkin" class="sec">Registrar asistencia</button></div>
+          </div>
+        </section>
+
+        <section>
+          <h2>Alta de paciente</h2>
+          <div class="fila">
+            <div>
+              <label for="nuevaCedula">Cédula</label>
+              <input id="nuevaCedula" inputmode="numeric" maxlength="10" />
+            </div>
+            <div>
+              <label for="nuevoNombre">Nombre</label>
+              <input id="nuevoNombre" />
+            </div>
+            <div>
+              <label for="nuevoUid">UID de la tarjeta (opcional)</label>
+              <input id="nuevoUid" placeholder="A1B2C3D4" />
+            </div>
+            <div style="flex: 0 0 auto"><button id="crear" class="sec">Crear</button></div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <script src="panel.js"></script>
+  </body>
+</html>
