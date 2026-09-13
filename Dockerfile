@@ -1,4 +1,6 @@
-FROM node:20-alpine AS build
+FROM node:20-slim AS build
+# Prisma necesita openssl para su motor de esquema
+RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package*.json ./
 COPY prisma ./prisma
@@ -6,7 +8,8 @@ RUN npm ci
 COPY . .
 RUN npx prisma generate && npm run build
 
-FROM node:20-alpine
+FROM node:20-slim
+RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package*.json ./
