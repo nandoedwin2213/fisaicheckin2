@@ -35,15 +35,28 @@ export class AdminService {
     }));
   }
 
-  async crearPaciente(cedula: string, nombre: string, uid?: string) {
-    if (uid && !normalizarUid(uid)) throw new BadRequestException('UID inválido');
-    if (await this.prisma.patient.findUnique({ where: { cedula } })) {
-      throw new ConflictException('Ya existe un paciente con esa cédula');
+  /** El paciente y su tarjeta se crean juntos: un UID ocupado no debe dejar al paciente a medio dar de alta. */
+  async crearPaciente(cedula: string, nombre: string, uidCrudo?: string) {
+    let uid: string | null = null;
+    if (uidCrudo) {
+      uid = normalizarUid(uidCrudo);
+      if (!uid) throw new BadRequestException('UID inválido');
     }
 
-    const patient = await this.prisma.patient.create({ data: { cedula, nombre } });
-    const tarjeta = uid ? await this.asignarTarjeta(cedula, uid) : null;
-    return { ok: true, id: patient.id, cedula, nombre, uid: tarjeta?.uid ?? null };
+    const patient = await this.prisma.$transaction(async (tx) => {
+      if (await tx.patient.findUnique({ where: { cedula } })) {
+        throw new ConflictException('Ya existe un paciente con esa cédula');
+      }
+      if (uid && (await tx.card.findUnique({ where: { uid } }))) {
+        throw new ConflictException('Esa tarjeta ya está asignada a otro paciente');
+      }
+
+      const creado = await tx.patient.create({ data: { cedula, nombre } });
+      if (uid) await tx.card.create({ data: { uid, patientId: creado.id } });
+      return creado;
+    });
+
+    return { ok: true, id: patient.id, cedula, nombre: patient.nombre, uid };
   }
 
   async asignarTarjeta(cedula: string, uidCrudo: string) {

@@ -1,4 +1,5 @@
-import { IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsOptional, IsString, Length, Matches } from 'class-validator';
 
 export class CrearPacienteDto {
   @IsString()
@@ -6,8 +7,9 @@ export class CrearPacienteDto {
   @Matches(/^\d{10}$/, { message: 'cedula debe tener 10 dígitos' })
   cedula!: string;
 
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
-  @MaxLength(120)
+  @Length(2, 120)
   nombre!: string;
 
   @IsOptional()
