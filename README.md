@@ -55,11 +55,24 @@ curl -X POST http://localhost:3000/checkin \
 | POST | `/checkin/manual` | `X-Staff-Key` (`STAFF_API_KEY`) | recepción, cuando el paciente olvidó la tarjeta |
 | POST | `/recargas` | `X-Staff-Key` | caja: vende un paquete, `{ cedula, packageId, registradoPor? }` |
 | GET | `/recargas/:cedula` | `X-Staff-Key` | saldo de sesiones y créditos del paciente |
+| GET | `/admin/paquetes` | `X-Staff-Key` | catálogo de paquetes activos para el panel |
+| GET | `/admin/terminales` | `X-Staff-Key` | terminales activos con su equipo (sin claves) |
+| POST | `/admin/pacientes` | `X-Staff-Key` | alta de paciente: `{ cedula, nombre, uid? }` |
+| POST | `/admin/pacientes/:cedula/tarjeta` | `X-Staff-Key` | enlaza una tarjeta: `{ uid }` |
 | GET | `/health` | — | comprobación de vida y de conexión a la base |
 
 `/checkin/manual` recibe `{ cedula, terminalId, registradoPor? }`. Identifica al paciente por cédula
 sin pasar por la tarjeta, no aplica la ventana anti doble lectura y marca el registro con
 `manual = true` y el usuario responsable.
+
+## Panel de caja
+
+En `/panel/index.html` (servido por el mismo backend) hay una página para recepción: buscar saldo por
+cédula, vender un paquete, hacer check-in manual y dar de alta pacientes con su tarjeta.
+
+La `STAFF_API_KEY` se escribe en la cabecera del panel y queda en `sessionStorage`, no en el HTML ni en
+el servidor de estáticos: no se distribuye ninguna clave con la página. Al ser una clave compartida,
+publica el panel solo en la red de la clínica o detrás de la autenticación de tu proxy.
 
 ## Resultados
 
