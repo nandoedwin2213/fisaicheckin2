@@ -88,6 +88,25 @@ npm run lint && npm run typecheck
 
 Las pruebas de integración se omiten si no hay `DATABASE_URL`.
 
+## Despliegue en Render
+
+El repo trae `render.yaml` (Blueprint): en Render → **New → Blueprint** y eligiendo este repositorio
+se crean el servicio web (Docker) y la base PostgreSQL, con `DATABASE_URL` enlazada y `STAFF_API_KEY`
+generada automáticamente. El contenedor ejecuta `prisma migrate deploy` en cada arranque.
+
+Después del primer despliegue, crea el terminal en la base (no hay seed en producción):
+
+```bash
+DATABASE_URL="<la externa de Render>" npm run terminal:add -- "Recepción" REHAB "TU-CLAVE"
+```
+
+Luego en el firmware: `API_URL = "https://<tu-servicio>.onrender.com/checkin"`, `API_KEY = "TU-CLAVE"`
+y el certificado raíz de Render (ISRG Root X1) en `ROOT_CA`.
+
+> El plan free de Render suspende el servicio tras inactividad: el primer check-in del día puede
+> tardar ~30 s en responder. La cola offline del terminal reintenta, pero para uso real conviene
+> el plan de pago.
+
 ## Integración con FISAI Flow
 
 Este servicio es autónomo y se conecta a su propia base. Si se quiere fusionar con la base de FISAI
