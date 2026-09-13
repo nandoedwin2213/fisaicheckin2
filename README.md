@@ -100,8 +100,8 @@ Después del primer despliegue, crea el terminal en la base (no hay seed en prod
 DATABASE_URL="<la externa de Render>" npm run terminal:add -- "Recepción" REHAB "TU-CLAVE"
 ```
 
-Luego en el firmware: `API_URL = "https://<tu-servicio>.onrender.com/checkin"`, `API_KEY = "TU-CLAVE"`
-y el certificado raíz de Render (ISRG Root X1) en `ROOT_CA`.
+Luego en el firmware solo queda poner `API_KEY = "TU-CLAVE"`: `API_URL` ya apunta al servicio desplegado
+y `ROOT_CA` trae el raíz con el que Render emite hoy (GTS Root R4, Google Trust Services).
 
 > El plan free de Render suspende el servicio tras inactividad: el primer check-in del día puede
 > tardar ~30 s en responder. La cola offline del terminal reintenta, pero para uso real conviene
