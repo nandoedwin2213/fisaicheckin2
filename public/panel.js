@@ -10,6 +10,22 @@ const aviso = (texto, ok = true) => {
 
 const clave = () => sessionStorage.getItem('staffKey') ?? '';
 
+/** Bloquea el botón mientras dura la acción: dos clics no pueden cobrar dos veces. */
+async function conBoton(boton, accion) {
+  if (boton.disabled) return;
+  boton.disabled = true;
+  const etiqueta = boton.textContent;
+  boton.textContent = 'Procesando…';
+  try {
+    await accion();
+  } catch (e) {
+    aviso(e.message, false);
+  } finally {
+    boton.disabled = false;
+    boton.textContent = etiqueta;
+  }
+}
+
 async function api(metodo, ruta, cuerpo) {
   const res = await fetch(ruta, {
     method: metodo,
@@ -42,13 +58,20 @@ function pintarSaldo(datos) {
     <tbody>${filas}</tbody></table>`;
 }
 
-async function buscar() {
+/** `silencioso` refresca la tabla sin pisar el mensaje de la recarga o del check-in. */
+async function buscar(silencioso = false) {
+  const cedula = $('cedula').value.trim();
+  if (!cedula) {
+    $('saldo').innerHTML = '';
+    if (!silencioso) aviso('Ingresa la cédula del paciente', false);
+    return;
+  }
   try {
-    pintarSaldo(await api('GET', `/recargas/${$('cedula').value.trim()}`));
-    aviso('Saldo actualizado');
+    pintarSaldo(await api('GET', `/recargas/${cedula}`));
+    if (!silencioso) aviso('Saldo actualizado');
   } catch (e) {
     $('saldo').innerHTML = '';
-    aviso(e.message, false);
+    if (!silencioso) aviso(e.message, false);
   }
 }
 
@@ -62,60 +85,48 @@ async function cargarCatalogos() {
     .join('');
 }
 
-$('entrar').onclick = async () => {
-  sessionStorage.setItem('staffKey', $('staffKey').value);
-  try {
+$('entrar').onclick = (ev) =>
+  conBoton(ev.currentTarget, async () => {
+    sessionStorage.setItem('staffKey', $('staffKey').value);
     await cargarCatalogos();
     $('panel').classList.remove('oculto');
     aviso('Sesión iniciada');
-  } catch (e) {
-    aviso(e.message, false);
-  }
-};
+  });
 
-$('buscar').onclick = buscar;
+$('buscar').onclick = (ev) => conBoton(ev.currentTarget, () => buscar());
 
-$('recargar').onclick = async () => {
-  try {
+$('recargar').onclick = (ev) =>
+  conBoton(ev.currentTarget, async () => {
     const res = await api('POST', '/recargas', {
       cedula: $('cedula').value.trim(),
       packageId: $('paquete').value,
       registradoPor: $('registradoPor').value.trim() || undefined,
     });
+    await buscar(true);
     aviso(`Recargado a ${res.paciente}: ${res.sesionesRestantes} sesiones, ${res.creditosRestantes} créditos`);
-    await buscar();
-  } catch (e) {
-    aviso(e.message, false);
-  }
-};
+  });
 
-$('checkin').onclick = async () => {
-  try {
+$('checkin').onclick = (ev) =>
+  conBoton(ev.currentTarget, async () => {
     const res = await api('POST', '/checkin/manual', {
       cedula: $('cedula').value.trim(),
       terminalId: $('terminal').value,
       registradoPor: $('registradoPor').value.trim() || undefined,
     });
+    await buscar(true);
     aviso(res.ok ? `OK ${res.paciente} — ${res.modo ?? 'SESIONES'}` : `Rechazado: ${res.resultado}`, res.ok);
-    await buscar();
-  } catch (e) {
-    aviso(e.message, false);
-  }
-};
+  });
 
-$('crear').onclick = async () => {
-  try {
+$('crear').onclick = (ev) =>
+  conBoton(ev.currentTarget, async () => {
     const res = await api('POST', '/admin/pacientes', {
       cedula: $('nuevaCedula').value.trim(),
       nombre: $('nuevoNombre').value.trim(),
       uid: $('nuevoUid').value.trim() || undefined,
     });
-    aviso(`Paciente ${res.nombre} creado${res.uid ? ` con tarjeta ${res.uid}` : ''}`);
     $('cedula').value = res.cedula;
-    await buscar();
-  } catch (e) {
-    aviso(e.message, false);
-  }
-};
+    await buscar(true);
+    aviso(`Paciente ${res.nombre} creado${res.uid ? ` con tarjeta ${res.uid}` : ''}`);
+  });
 
 if (clave()) $('staffKey').value = clave();
