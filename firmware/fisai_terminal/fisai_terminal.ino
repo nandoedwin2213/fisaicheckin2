@@ -7,6 +7,9 @@
  * Diferencias con el prototipo:
  *  - Verifica el certificado del servidor (ROOT_CA) en vez de client.setInsecure().
  *  - Cola offline en NVS: si no hay WiFi o la API falla, la lectura se guarda y se reintenta.
+ *  - Relé: si el terminal controla un equipo (sillón, caminadora…), la API responde
+ *    duracionSegundos y el relé se cierra ese tiempo. En cobro por minutos la API
+ *    manda además un usoId y al apagar se reporta a /checkin/fin cuánto duró.
  *
  * Librerías: MFRC522 (GithubCommunity), ArduinoJson (Benoit Blanchon)
  * Placa: ESP32 Dev Module
@@ -28,7 +31,8 @@
 // ---------- Configuración ----------
 const char* WIFI_SSID = "TU_WIFI";
 const char* WIFI_PASS = "TU_CLAVE";
-const char* API_URL   = "https://fisai-checkin.onrender.com/checkin";
+const char* API_URL     = "https://fisai-checkin.onrender.com/checkin";
+const char* API_FIN_URL = "https://fisai-checkin.onrender.com/checkin/fin";
 const char* API_KEY   = "clave-del-terminal";   // texto plano; en la base vive su hash SHA-256
 
 // Certificado raíz del emisor del servidor. Render emite hoy con Google Trust Services (GTS Root R4).
@@ -55,6 +59,9 @@ p/SgguMh1YQdc4acLa/KNJvxn7kjNuK8YAOdgLOaVsjh4rsUecrNIdSUtUlD
 #define LED_OK   26
 #define LED_NO   27
 #define BTN_BOOT 0
+#define RELE     25
+// Casi todos los módulos de relé con optoacoplador activan con nivel bajo.
+#define RELE_ACTIVO_EN_BAJO true
 
 #if !MODO_PRUEBA
   MFRC522 rfid(SS_PIN, RST_PIN);
@@ -64,6 +71,11 @@ Preferences cola;                       // cola offline persistente
 const int   COLA_MAX = 20;
 const unsigned long REINTENTO_MS = 30000;
 unsigned long ultimoReintento = 0;
+
+// Estado del equipo conectado al relé.
+String        usoEnCurso = "";          // usoId cuando el equipo cobra por minutos
+unsigned long releDesde  = 0;
+unsigned long releHasta  = 0;           // 0 = relé abierto
 
 // ---------- Feedback ----------
 void beep(int ms) { digitalWrite(BUZZER, HIGH); delay(ms); digitalWrite(BUZZER, LOW); }
@@ -99,6 +111,19 @@ void colaQuitarPrimero() {
     cola.putString(("u" + String(i - 1)).c_str(), cola.getString(("u" + String(i)).c_str(), ""));
   }
   if (n > 0) { cola.remove(("u" + String(n - 1)).c_str()); cola.putInt("n", n - 1); }
+}
+
+// ---------- Relé ----------
+void releEscribir(bool cerrado) {
+  digitalWrite(RELE, (cerrado ^ RELE_ACTIVO_EN_BAJO) ? HIGH : LOW);
+}
+
+void releCerrar(unsigned long segundos, const String& usoId) {
+  usoEnCurso = usoId;
+  releDesde  = millis();
+  releHasta  = releDesde + segundos * 1000UL;
+  releEscribir(true);
+  Serial.printf("Equipo encendido %lu s%s\n", segundos, usoId.isEmpty() ? "" : " (por minutos)");
 }
 
 // ---------- WiFi ----------
@@ -141,6 +166,8 @@ bool enviarCheckin(const String& uid, bool mostrarFeedback) {
     if (ok) {
       Serial.printf("OK %s — quedan %d sesiones\n", doc["paciente"] | "", doc["sesionesRestantes"] | 0);
       feedbackOk();
+      unsigned long duracion = doc["duracionSegundos"] | 0UL;
+      if (duracion > 0) releCerrar(duracion, String((const char*)(doc["usoId"] | "")));
     } else {
       Serial.printf("RECHAZADO: %s\n", doc["resultado"] | "?");
       feedbackNo();
@@ -149,13 +176,61 @@ bool enviarCheckin(const String& uid, bool mostrarFeedback) {
   return true;
 }
 
+// Cierre del uso por minutos: se guarda si falla para reintentarlo con la cola.
+bool reportarFin(const String& usoId, unsigned long segundos) {
+  conectarWifi();
+  if (WiFi.status() != WL_CONNECTED) return false;
+
+  WiFiClientSecure client;
+  client.setCACert(ROOT_CA);
+  HTTPClient http;
+  if (!http.begin(client, API_FIN_URL)) return false;
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("X-Terminal-Key", API_KEY);
+  http.setTimeout(8000);
+
+  String body = "{\"usoId\":\"" + usoId + "\",\"segundos\":" + String(segundos) + "}";
+  int code = http.POST(body);
+  Serial.printf("FIN HTTP %d: %s\n", code, http.getString().c_str());
+  http.end();
+  return code >= 200 && code < 300;
+}
+
+void finPendienteGuardar(const String& usoId, unsigned long segundos) {
+  cola.putString("fin_uso", usoId);
+  cola.putULong("fin_seg", segundos);
+}
+
+void finPendienteReintentar() {
+  String usoId = cola.getString("fin_uso", "");
+  if (usoId.isEmpty()) return;
+  if (!reportarFin(usoId, cola.getULong("fin_seg", 0))) return;
+  cola.remove("fin_uso");
+  cola.remove("fin_seg");
+}
+
+void releAtender() {
+  if (releHasta == 0 || millis() < releHasta) return;
+  releEscribir(false);
+  unsigned long segundos = (millis() - releDesde) / 1000UL;
+  releHasta = 0;
+  Serial.printf("Equipo apagado tras %lu s\n", segundos);
+  if (!usoEnCurso.isEmpty()) {
+    if (!reportarFin(usoEnCurso, segundos)) finPendienteGuardar(usoEnCurso, segundos);
+    usoEnCurso = "";
+  }
+}
+
 void procesarLectura(const String& uid) {
+  if (releHasta != 0) { Serial.println("Equipo en uso"); feedbackNo(); return; }
   if (!enviarCheckin(uid, true)) { colaGuardar(uid); feedbackEncolado(); }
 }
 
 void vaciarCola() {
-  if (colaTam() == 0 || millis() - ultimoReintento < REINTENTO_MS) return;
+  if (millis() - ultimoReintento < REINTENTO_MS) return;
   ultimoReintento = millis();
+  finPendienteReintentar();
+  if (colaTam() == 0) return;
   while (colaTam() > 0) {
     String uid = cola.getString("u0", "");
     if (uid.isEmpty()) { colaQuitarPrimero(); continue; }
@@ -170,6 +245,8 @@ void setup() {
   Serial.begin(115200);
   pinMode(BUZZER, OUTPUT); pinMode(LED_OK, OUTPUT); pinMode(LED_NO, OUTPUT);
   pinMode(BTN_BOOT, INPUT_PULLUP);
+  pinMode(RELE, OUTPUT);
+  releEscribir(false);
   cola.begin("checkin", false);
 
 #if !MODO_PRUEBA
@@ -184,6 +261,7 @@ void setup() {
 }
 
 void loop() {
+  releAtender();
   vaciarCola();
 
 #if MODO_PRUEBA
