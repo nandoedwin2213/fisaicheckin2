@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: fisai
+      POSTGRES_PASSWORD: fisai
+      POSTGRES_DB: fisai_checkin
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fisai -d fisai_checkin"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - fisai_checkin_db:/var/lib/postgresql/data
+
+volumes:
+  fisai_checkin_db:

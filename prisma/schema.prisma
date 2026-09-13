@@ -1,0 +1,117 @@
+// FISAI — Check-in por tarjeta RFID
+// La tarjeta es SOLO un identificador: nunca guarda saldo ni datos clínicos.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ServiceType {
+  REHAB
+  SARCO_FORCE
+  EVALUACION
+}
+
+enum AttendanceResult {
+  OK
+  SIN_PAQUETE
+  PAQUETE_VENCIDO
+  TARJETA_DESCONOCIDA
+  TARJETA_SIN_PACIENTE
+  TARJETA_INACTIVA
+  DUPLICADO
+  PACIENTE_DESCONOCIDO
+}
+
+model Patient {
+  id        String   @id @default(uuid())
+  cedula    String   @unique
+  nombre    String
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cards      Card[]
+  packages   PatientPackage[]
+  attendance Attendance[]
+}
+
+model Card {
+  id        String    @id @default(uuid())
+  uid       String    @unique // UID hex en mayúsculas, ej. "A1B2C3D4"
+  activa    Boolean   @default(true)
+  patientId String?
+  patient   Patient?  @relation(fields: [patientId], references: [id])
+  issuedAt  DateTime  @default(now())
+  revokedAt DateTime?
+
+  attendance Attendance[]
+
+  @@index([patientId])
+}
+
+model Package {
+  id           String      @id @default(uuid())
+  nombre       String
+  sesiones     Int
+  vigenciaDias Int
+  precio       Decimal     @db.Decimal(10, 2)
+  serviceType  ServiceType
+  activo       Boolean     @default(true)
+
+  patientPackages PatientPackage[]
+}
+
+model PatientPackage {
+  id                String   @id @default(uuid())
+  patientId         String
+  patient           Patient  @relation(fields: [patientId], references: [id])
+  packageId         String
+  package           Package  @relation(fields: [packageId], references: [id])
+  sesionesRestantes Int
+  compradoEn        DateTime @default(now())
+  venceEn           DateTime
+
+  attendance Attendance[]
+
+  @@index([patientId, venceEn])
+}
+
+// Un ESP32 físico. Se guarda solo el hash de la apiKey; el texto plano vive en el firmware.
+model Terminal {
+  id          String      @id @default(uuid())
+  nombre      String
+  serviceType ServiceType
+  apiKeyHash  String      @unique
+  activo      Boolean     @default(true)
+  ultimoVisto DateTime?
+  createdAt   DateTime    @default(now())
+
+  attendance Attendance[]
+}
+
+// Cada lectura queda registrada, sea aceptada o no. Es la fuente de reportería.
+model Attendance {
+  id               String           @id @default(uuid())
+  cardId           String?
+  card             Card?            @relation(fields: [cardId], references: [id])
+  patientId        String?
+  patient          Patient?         @relation(fields: [patientId], references: [id])
+  terminalId       String
+  terminal         Terminal         @relation(fields: [terminalId], references: [id])
+  patientPackageId String?
+  patientPackage   PatientPackage?  @relation(fields: [patientPackageId], references: [id])
+  uidLeido         String? // null cuando el registro es manual por cédula
+  resultado        AttendanceResult
+  manual           Boolean          @default(false)
+  registradoPor    String? // usuario de recepción que hizo el registro manual
+  createdAt        DateTime         @default(now())
+
+  @@index([terminalId, createdAt])
+  @@index([patientId, createdAt])
+  @@index([cardId, createdAt])
+}
