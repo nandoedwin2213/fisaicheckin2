@@ -111,6 +111,21 @@ describeDb('Panel de caja (integración)', () => {
     expect(card.patient?.nombre).toBe('Ana');
   });
 
+  it('no deja al paciente creado cuando su tarjeta ya está ocupada', async () => {
+    await conClave('post', '/admin/pacientes').send({ cedula: '1712345678', nombre: 'Ana', uid: 'A1B2C3D4' }).expect(201);
+
+    await conClave('post', '/admin/pacientes')
+      .send({ cedula: '1798765432', nombre: 'Luis', uid: 'A1B2C3D4' })
+      .expect(409);
+
+    expect(await prisma.patient.findUnique({ where: { cedula: '1798765432' } })).toBeNull();
+  });
+
+  it('exige un nombre no vacío', async () => {
+    await conClave('post', '/admin/pacientes').send({ cedula: '1712345678', nombre: '   ' }).expect(400);
+    expect(await prisma.patient.count()).toBe(0);
+  });
+
   it('rechaza un UID que no es hexadecimal', async () => {
     await conClave('post', '/admin/pacientes').send({ cedula: '1712345678', nombre: 'Ana', uid: 'ZZZZZZZZ' }).expect(400);
     expect(await prisma.patient.count()).toBe(0);
